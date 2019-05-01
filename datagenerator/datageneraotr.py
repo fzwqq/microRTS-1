@@ -6,17 +6,20 @@ import numpy as np
 # {"id", "time", "state", "action" , "reward", "state_next"} 
 # id is state id
 # time is the game timestamp of state
-# state is NxNx2 tensor 
-#   chanle 1 mark the type id of unit , postive number belong to player 1, negative belong to player 
-#   chanle 2 mark the unit id  which realte to action
-#   use chanle 2 could find unit owner too, but I think it will make code more complete
+
+# state is not decided yet
+# you could override encode_game_state in class Trace
+
 # action is action list of unit decided in state
 # action is a 4-dim tuple
 # action is 4-dim tuple = { unit id , action type, direction, destination }
 #   for attack action, destination is army x y 
 #   for produce unit action destination x is meanless , y is the type of produced unit
 #   for other action , based on unit x y and direction could know it destination
-# reward function is not defined yet, so jut equal to zero
+
+# reward function is not defined yet
+# you could override get_reward in class Trace
+
 # state next is represent as a state id
         
 
@@ -115,7 +118,6 @@ class Trace():
         action_list = self.decode_actions(action)
         trace_entry = {"id" : self.state_id_cnt, "time" : timestamp,  "state" : state, "action":action_list, "reward":reward, "state_next":state_next_id} 
         self.state_id_cnt += 1
-        #print(trace_entry)
         self.trajectory.append(trace_entry)
 
     # decode xml fomat pgs
@@ -136,42 +138,50 @@ class Trace():
         for child in units:
             attrib = child.attrib
             unit = Unit(attrib["type"], attrib["ID"], attrib["player"], int(attrib["x"]), int(attrib["y"]), attrib["resources"], attrib["hitpoints"])
-            if unit.player_id == '-1':
-                unit_list_share.append(unit)
-            if unit.player_id == '0':
-                unit_list_1.append(unit)
-            if unit.player_id == '1':
-                unit_list_2.append(unit)
             self.unit_dict[unit.unit_id] = unit
         game_state = self.encode_game_state(width, height, terrain, self.unit_dict)
         return game_state
 
-    # produce game state varibale in required format
     def encode_game_state(self, width, height, terrain, unit_dict):
-        # chanle 1 mark the type id of unit , postive number belong to player 1, negative belong to player 
-        # chanle 2 mark the unit id  which realte to action
-        # use chanle 2 could find unit owner too, but I think it will make code more complete
-        game_map = np.zeros((width, height,2))
+        # Initialization of spatial features
+        spatial_features = np.zeros((18,height,width))
+        #channel_wall
+        channel_wall = spatial_features[0]
         for i in range(len(terrain)):
             row = i / width
             col = i % width
             if terrain[i] == 1:
-                game_map[row,col,:] = 1
+                channel_wall[row][col] = 1
 
-        for k in unit_dict:
-            unit = unit_dict[k]
+        channel_resource = spatial_features[1]
+        channel_self_type = spatial_features[2:8]
+        channel_self_hp = spatial_features[8]
+        channel_self_resource_carried = spatial_features[9]
+        channel_enemy_type = spatial_features[9:15]
+        channel_enemy_hp = spatial_features[16]
+        channel_enemy_resource_carried = spatial_features[17]
+        for key in unit_dict:
+            unit = unit_dict[key]
+            _player = unit.player_id
+            x = unit.x 
+            y = unit.y
             unit_type_id = int(self.unit_type_table[unit.type_name].unit_type_id)
-            player_id = unit.player_id
-            row = unit.y
-            col = unit.x
-            if player_id == '1':
-                # notice that is negative number of unit type id for player 2
-                game_map[row, col, 0] = - unit_type_id
-                game_map[row, col, 1] = unit.unit_id
-            else:
-                game_map[row, col, 0] = unit_type_id
-                game_map[row, col, 1] = unit.unit_id        
-        return game_map
+            # neutral
+            if _player == "-1":
+                channel_resource[x][y] = unit.resources
+            elif _player == "0":
+                # get the index of this type
+                idx = unit_type_id
+                channel_self_type[idx][x][y] = 1
+                channel_self_hp[x][y] = unit.hp
+                channel_self_resource_carried[x][y] = unit.resources
+            else: 
+                idx = unit_type_id
+                channel_enemy_type[idx][x][y] = 1
+                channel_enemy_hp[x][y] = unit.hp
+                channel_enemy_resource_carried[x][y] = unit.resources
+        #print(spatial_features)
+        return spatial_features
 
     # decode xml actions
     # action is 4-dim tuple = { unit id , action type, direction, destination }
