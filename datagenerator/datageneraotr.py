@@ -22,7 +22,90 @@ import numpy as np
 
 # state next is represent as a state id
         
+# replace this function with your metho
+def encode_game_state_my(unit_type_table, width, height, terrain, unit_dict):
+    states = np.zeros((25,width,height))
+    # base, barracks, worker, light, heavy,ranged
+    channel_unit_type = states[0:6]
+    # 1, 2, 3, 4, >5
+    channel_unit_hitpoint = states[6:11]
+    channel_unit_owner = states[11:13]
+    # 0 - 25, 25-50, 51-80, 81-120, >121
+    channel_frame_to_completion = states[13:18]
+    # 1,2,3,4,5,6-9,>10
+    channel_unit_resource = states[18:25]
+    for key in unit_dict:
+        unit = unit_dict[key]
+        idx = 0
+        player_id = int(unit.player_id)
+        hp = int(unit.hp)
+        x = int(unit.x)
+        y = int(unit.y)
+        resources = int(unit.resources)
+        # type channel
+        unit_type_id = int(unit_type_table[unit.type_name].unit_type_id)
+        if unit_type_id > 0:
+            channel_unit_type[unit_type_id-1][x][y] = 1
+        # hp channel idx = 6
+        if hp >= 5:
+            channel_unit_hitpoint[4][x][y] = 1
+        elif hp > 0:
+            channel_unit_hitpoint[hp-1][x][y] = 1
+        # unit owner idx = 11
+        channel_unit_owner[player_id][x][y] = 1
+        # freame to completion idx = 13
+        # frame to completion what is it
+        # resource channle idx = 18
+        if resources >= 10:
+            channel_unit_resource[6][x][y] = 1
+        elif resources <= 9 and resources >= 6:
+            channel_unit_resource[5][x][y] = 1
+        elif resources > 0:
+            channel_unit_resource[resources-1][x][y] = 1
+    return states
 
+    '''
+    def encode_game_state(unit_type_table, width, height, terrain, unit_dict):
+        # Initialization of spatial features
+        spatial_features = np.zeros((18,height,width))
+        #channel_wall
+        channel_wall = spatial_features[0]
+        for i in range(len(terrain)):
+            row = i / width
+            col = i % width
+            if terrain[i] == 1:
+                channel_wall[row][col] = 1
+
+        channel_resource = spatial_features[1]
+        channel_self_type = spatial_features[2:8]
+        channel_self_hp = spatial_features[8]
+        channel_self_resource_carried = spatial_features[9]
+        channel_enemy_type = spatial_features[9:15]
+        channel_enemy_hp = spatial_features[16]
+        channel_enemy_resource_carried = spatial_features[17]
+        for key in unit_dict:
+            unit = unit_dict[key]
+            _player = unit.player_id
+            x = unit.x 
+            y = unit.y
+            unit_type_id = int(unit_type_table[unit.type_name].unit_type_id)
+            # neutral
+            if _player == "-1":
+                channel_resource[x][y] = unit.resources
+            elif _player == "0":
+                # get the index of this type
+                idx = unit_type_id
+                channel_self_type[idx][x][y] = 1
+                channel_self_hp[x][y] = unit.hp
+                channel_self_resource_carried[x][y] = unit.resources
+            else: 
+                idx = unit_type_id
+                channel_enemy_type[idx][x][y] = 1
+                channel_enemy_hp[x][y] = unit.hp
+                channel_enemy_resource_carried[x][y] = unit.resources
+        #print(spatial_features)
+        return spatial_features
+    '''    
 
 
 class UnitType():
@@ -48,7 +131,6 @@ class UnitType():
         self.canHarvest = canHarvest
         self.canMove = canMove
         self.canAttack = canAttack
-
 
 class Unit():
     def __init__(self, type_name, unit_id, player_id, x, y, resources, hp):
@@ -80,11 +162,13 @@ class PhysicalGameState():
 # Trace is a integrate game trajectory
 class Trace():
 
-    def __init__(self):
+    def __init__(self,encode_game_state):
         self.unit_type_table = {}
         self.unit_dict = {}
-        self.trajectory = []
+        self.winner = -2
+        self.trajectory = None
         self.state_id_cnt = 0
+        self.encode_game_state = encode_game_state
         self.action_projection = { "0":"hold" , "1":"move", "2":"harvest", "3":"return", "4":"produce_unit", "5":"attack"}
         self.direction_projection = {"-1":"none", "0":"up", "1":"right", "2":"down","3":"left", "10":"none"}
     
@@ -106,6 +190,7 @@ class Trace():
     # decode xml format pgs and actions to required format
     def append_trace_entry(self, timestamp, pgs, action):
         state = self.decode_pgs(pgs)
+        '''
         state_next_id = -1
         if len(self.trajectory) == 0:
             state_next_id = -1
@@ -116,9 +201,19 @@ class Trace():
             reward = self.get_reward(state, state_next["state"])
     
         action_list = self.decode_actions(action)
-        trace_entry = {"id" : self.state_id_cnt, "time" : timestamp,  "state" : state, "action":action_list, "reward":reward, "state_next":state_next_id} 
+        '''
+        state = state.flatten()
+        label = np.array([self.winner,])
+
+        trace_entry = np.concatenate([state,label])
+        trace_entry = np.reshape(trace_entry, (1,-1)) 
+        #trace_entry = {"id" : self.state_id_cnt, "time" : timestamp,  "state" : state, "action":action_list, "reward":reward, "state_next":state_next_id} 
         self.state_id_cnt += 1
-        self.trajectory.append(trace_entry)
+        if self.trajectory is None:
+            self.trajectory = trace_entry
+        else:
+            print(self.trajectory.shape)
+            self.trajectory = np.r_[self.trajectory, trace_entry]
 
     # decode xml fomat pgs
     def decode_pgs(self,pgs):
@@ -139,49 +234,8 @@ class Trace():
             attrib = child.attrib
             unit = Unit(attrib["type"], attrib["ID"], attrib["player"], int(attrib["x"]), int(attrib["y"]), attrib["resources"], attrib["hitpoints"])
             self.unit_dict[unit.unit_id] = unit
-        game_state = self.encode_game_state(width, height, terrain, self.unit_dict)
+        game_state = self.encode_game_state(self.unit_type_table, width, height, terrain, self.unit_dict)
         return game_state
-
-    def encode_game_state(self, width, height, terrain, unit_dict):
-        # Initialization of spatial features
-        spatial_features = np.zeros((18,height,width))
-        #channel_wall
-        channel_wall = spatial_features[0]
-        for i in range(len(terrain)):
-            row = i / width
-            col = i % width
-            if terrain[i] == 1:
-                channel_wall[row][col] = 1
-
-        channel_resource = spatial_features[1]
-        channel_self_type = spatial_features[2:8]
-        channel_self_hp = spatial_features[8]
-        channel_self_resource_carried = spatial_features[9]
-        channel_enemy_type = spatial_features[9:15]
-        channel_enemy_hp = spatial_features[16]
-        channel_enemy_resource_carried = spatial_features[17]
-        for key in unit_dict:
-            unit = unit_dict[key]
-            _player = unit.player_id
-            x = unit.x 
-            y = unit.y
-            unit_type_id = int(self.unit_type_table[unit.type_name].unit_type_id)
-            # neutral
-            if _player == "-1":
-                channel_resource[x][y] = unit.resources
-            elif _player == "0":
-                # get the index of this type
-                idx = unit_type_id
-                channel_self_type[idx][x][y] = 1
-                channel_self_hp[x][y] = unit.hp
-                channel_self_resource_carried[x][y] = unit.resources
-            else: 
-                idx = unit_type_id
-                channel_enemy_type[idx][x][y] = 1
-                channel_enemy_hp[x][y] = unit.hp
-                channel_enemy_resource_carried[x][y] = unit.resources
-        #print(spatial_features)
-        return spatial_features
 
     # decode xml actions
     # action is 4-dim tuple = { unit id , action type, direction, destination }
@@ -209,11 +263,13 @@ class Trace():
                     y = -2
                 action_atom = {'id':unit_id, 'type':action_type, 'direction':direction, 'destination':[x,y]}
                 action_list.append(action_atom)
-
         return action_list
     
     def get_trajectory(self):
         return self.trajectory
+    
+    def set_winner(self, winner):
+        self.winner = winner
             
 
 
@@ -228,7 +284,7 @@ class Datagenerator():
     def get_trace_from_file(self,filename, mode):
         if mode == "w":
             self.traces = []
-        trace = Trace()
+        trace = Trace(encode_game_state_my)
 
         tree = ET.parse(filename)
         # root is rts.Trace
@@ -239,6 +295,8 @@ class Datagenerator():
         unit_type_table = root[0]
         trace.decode_unit_type_table(unit_type_table)
 
+        winner = root[2].attrib['winner']
+        trace.set_winner(winner)
         entries = root[1]
         reversed_entries = []
         for child in entries:
@@ -246,6 +304,7 @@ class Datagenerator():
         reversed_entries.reverse()
         # reverse the entries so could generate state from end to begin
         # child of entries is TraceEntry
+        trace.set_winner(winner)
         for child in reversed_entries:
             timestamp = child.attrib["time"]
             pgs = child[0]
@@ -257,15 +316,20 @@ class Datagenerator():
     def write_traces_to_file(self,root_path):
         for trace in self.trace_list:
             trajectory = trace.get_trajectory()
+            print(trajectory)
+            np.save('test.npy',trajectory)
+            print(trajectory.shape)
+            '''
             for entry in trajectory:
                 with open(root_path,'a') as f:
                     f.write(str(entry))
                     f.write('\n\n\n')
+                        '''
 
 
 if __name__ == "__main__":
     dg = Datagenerator()
-    dg.get_trace_from_file("trace1.xml","a")
+    dg.get_trace_from_file("test_trace.xml","a")
     dg.write_traces_to_file('test.data')
 
 

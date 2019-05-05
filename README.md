@@ -2,11 +2,21 @@
 
 ## network
 
-* **network/eval_network** and **network/policy_network** 实现了 [1] 论文的神经网络结构，使用随机生成的数据集可以运行。进一步的测试还需要得到真实的数据
+### 2017_champion_cnn
 
-* **network/original_eval_network** 实现了 [2] 论文中的神经网络结构，[1] 论文基于 [2] 论文的结构引入 policy network
+实现了 [1] 论文的神经网络结构，使用随机生成的数据集可以运行。进一步的测试还需要得到真实的数据
 
-## Reference
+### original_cnn
+
+实现了 [2] 论文中的神经网络结构，[1] 论文基于 [2] 论文的网络结构引入了 policy network
+
+## datagenerator
+
+* 用于实现对 microRTS 平台生成的 trace 文件的解析
+* 替换文件中的 encode_game_state 和 reward 函数来实现自定义的 state 和 reward 的解析
+* 当前将解析出来的数据转换为论文 [2] 中的数据格式，可以用来训练 original_cnn 神经网络
+
+# Reference
 
 [1]:Barriga, N. A., Stanescu, M., & Buro, M. (2017). Combining Strategic Learning and Tactical Search in Real-Time Strategy Games, (October). Retrieved from http://arxiv.org/abs/1709.03480
 

@@ -1,2 +1,6 @@
 /micrortsPlatform
 **/weights
+*.pyc
+*.npy
+!**/test.npy
+
