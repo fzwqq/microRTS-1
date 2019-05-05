@@ -12,7 +12,7 @@
 
 ## datagenerator
 
-* 用于实现对 microRTS 平台生成的 trace 文件的解析
+* 实现对 microRTS 平台生成的 trace 文件的解析
 * 替换文件中的 encode_game_state 和 reward 函数来实现自定义的 state 和 reward 的解析
 * 当前将解析出来的数据转换为论文 [2] 中的数据格式，可以用来训练 original_cnn 神经网络
 
